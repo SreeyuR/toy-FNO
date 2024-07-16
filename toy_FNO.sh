@@ -14,4 +14,4 @@
 #SBATCH --mail-type=FAIL
 #SBATCH --partition=gpu
 
-/home/sratala/miniconda3/envs/fusion/bin/python toy_FNO_v2.py
+/home/sratala/miniconda3/envs/fusion/bin/python toy_FNO.py
