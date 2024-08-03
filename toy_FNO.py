@@ -1,6 +1,10 @@
 TEST_MODE = False
 num_train_samples = 36_000 # total: 36k
 num_test_samples = 4_000  # total: 4k
+batch_size = 256
+epochs = 100
+learning_rate = 0.001
+
 
 import torch
 from neuralop.models.fno import FNO
@@ -13,23 +17,23 @@ import os
 import wandb
 
 # monitor model's progress
-#wandb.login()
+wandb.login()
+# monitor model's progress
 # start a new wandb run to track this script
 wandb.init(
     # set the wandb project where this run will be logged
-    project="toy-fno-main",
-
+    project="toy-fno",
+    name="long run 1; init params",
     # track hyperparameters and run metadata
     config={
-    "learning_rate": 0.001,
+    "learning_rate": learning_rate,
     "architecture": "FNO",
-    "dataset": "???",
-    "epochs": 100,
-    "batch_size": 256
+    "dataset": "toy FNO dataset",
+    "epochs": epochs,
+    "batch_size": batch_size,
     }
 )
 
-print(torch.cuda.is_available())
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
@@ -53,7 +57,7 @@ test_input = test_input[:num_test_samples]
 test_output = test_output[:num_test_samples]
 
 # define and instantiate: loss and model
-class L2Loss(object):
+class L2Loss(object): # L2 norm on functions (normalize by number of grid points)
     # loss returns the sum over all the samples in the current batch
     def __init__(self,):
         super(L2Loss, self).__init__()
@@ -64,16 +68,13 @@ class L2Loss(object):
         y_norms = torch.norm(y.reshape(num_examples,-1), 2, 1)
         return torch.sum(diff_norms / y_norms)
 
-model = FNO(n_modes=(16, 16), hidden_channels=64, in_channels=2, out_channels=2)
+#           fourier transform: freq modes                        x & y component of vector field
+model = FNO(n_modes=(16, 16), hidden_channels=64, in_channels=2, out_channels=2) # discretization invariant (uniform grid)
 model.to(device)
 criterion = L2Loss()
 
-# set parameters
-epochs = 100
-learning_rate = 0.001
-batch_size = 256
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-scheduler = StepLR(optimizer, step_size=50, gamma=0.1)  # Adjust lr every 50 epochs by multiplying with gamma
+scheduler = StepLR(optimizer, step_size=50, gamma=0.5)  # Adjust lr every 50 epochs by multiplying with gamma; cos scheduler
 
 train_dataset = TensorDataset(train_input, train_output)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -83,7 +84,6 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 # train and test model at each epoch
 train_losses = []
 test_losses = []
-
 for epoch in range(epochs):
     model.train()
     running_loss = 0.0
@@ -95,8 +95,7 @@ for epoch in range(epochs):
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
-    train_samples = len(train_loader) * batch_size # (num_samples / batch size) * batch_size
-    epoch_train_loss = running_loss / train_samples
+    epoch_train_loss = running_loss / num_train_samples
     train_losses.append(epoch_train_loss)
 
     model.eval()
@@ -107,7 +106,7 @@ for epoch in range(epochs):
             outputs = model(inputs)
             loss = criterion(outputs, targets)
             val_loss += loss.item()
-    epoch_test_loss = val_loss / len(test_loader)
+    epoch_test_loss = val_loss / num_test_samples
     test_losses.append(epoch_test_loss)
     
     scheduler.step()  # Update learning rate scheduler
